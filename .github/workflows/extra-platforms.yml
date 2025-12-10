@@ -1,0 +1,48 @@
+on:
+  workflow_dispatch
+
+jobs:
+  TestExtraPlatforms:
+    strategy:
+      fail-fast: false
+
+      matrix:
+        platform:
+        - { target: x86_64-win7-windows-gnu, os: windows-latest }
+        - { target: x86_64-win7-windows-msvc, os: windows-latest }
+        - { target: arm64ec-pc-windows-msvc, os: windows-11-arm }
+        - { target: armv5te-unknown-linux-gnueabi, os: ubuntu-24.04-arm }
+        - { target: armv5te-unknown-linux-musleabi, os: ubuntu-24.04-arm }
+        - { target: x86_64h-apple-darwin, os: macos-15-intel }
+
+    runs-on: ${{ matrix.platform.os }}
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Target add and log toolchain info
+      run: |
+        rustup default nightly
+        rustup component add rust-src
+        rustup --version
+        rustup toolchain list
+        rustup target list --installed
+
+    - name: Install linux linkers
+      if: ${{ runner.os == 'Linux' }}
+      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
+      with:
+        packages: gcc-arm-linux-gnueabi
+
+    - name: Build
+      run: cargo build -Z build-std --verbose --target ${{ matrix.platform.target }}
+
+    - name: Test
+      run: cargo test -Z build-std --verbose --target ${{ matrix.platform.target }}
+
+    env:
+      RUST_BACKTRACE: 1
+      RUST_INCREMENTAL: 0
+      RUSTFLAGS: "-C debuginfo=0"
+      CARGO_TARGET_ARMV5TE_UNKNOWN_LINUX_GNUEABI_LINKER: arm-linux-gnueabi-gcc
+      CARGO_TARGET_ARMV5TE_UNKNOWN_LINUX_MUSLEABI_LINKER: arm-linux-gnueabi-gcc
