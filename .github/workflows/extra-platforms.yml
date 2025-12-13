@@ -28,9 +28,12 @@ jobs:
         rustup toolchain list
         rustup target list --installed
 
-    - name: Allow installing 32-bit arm packages
+    - name: Installing 32-bit CI env
       if: ${{ runner.os == 'Linux' }}
-      run: sudo dpkg --add-architecture armhf && sudo apt update && sudo apt install gcc-arm-linux-gnueabi arm-linux-musleabihf-gcc:armhf
+      run: |
+        sudo dpkg --add-architecture armhf && sudo apt-get update && sudo apt install gcc-arm-linux-gnueabi musl-dev:armhf # linker
+        sudo ln -s /usr/arm-linux-gnueabi/lib/{ld-linux.so.*,libgcc_s.so.*,libm.so.*,libc.so.*} /lib # provide base libs to make tests runnable
+        rustup target add ${{ matrix.platform.target }} # crt files
 
     - name: Build
       run: cargo build -Z build-std --verbose --target ${{ matrix.platform.target }}
