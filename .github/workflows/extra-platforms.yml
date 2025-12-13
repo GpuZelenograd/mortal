@@ -11,8 +11,8 @@ jobs:
         - { target: x86_64-win7-windows-gnu, os: windows-latest }
         - { target: x86_64-win7-windows-msvc, os: windows-latest }
         - { target: arm64ec-pc-windows-msvc, os: windows-11-arm }
+        - { target: arm-unknown-linux-musleabihf, os: ubuntu-24.04-arm }
         - { target: armv5te-unknown-linux-gnueabi, os: ubuntu-24.04-arm }
-        - { target: armv5te-unknown-linux-musleabi, os: ubuntu-24.04-arm }
         - { target: x86_64h-apple-darwin, os: macos-15-intel }
 
     runs-on: ${{ matrix.platform.os }}
@@ -28,11 +28,9 @@ jobs:
         rustup toolchain list
         rustup target list --installed
 
-    - name: Install linux linkers
+    - name: Allow installing 32-bit arm packages
       if: ${{ runner.os == 'Linux' }}
-      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
-      with:
-        packages: gcc-arm-linux-gnueabi
+      run: sudo dpkg --add-architecture armhf && sudo apt update && sudo apt install gcc-arm-linux-gnueabi arm-linux-musleabihf-gcc:armhf
 
     - name: Build
       run: cargo build -Z build-std --verbose --target ${{ matrix.platform.target }}
@@ -45,4 +43,4 @@ jobs:
       RUST_INCREMENTAL: 0
       RUSTFLAGS: "-C debuginfo=0"
       CARGO_TARGET_ARMV5TE_UNKNOWN_LINUX_GNUEABI_LINKER: arm-linux-gnueabi-gcc
-      CARGO_TARGET_ARMV5TE_UNKNOWN_LINUX_MUSLEABI_LINKER: arm-linux-gnueabi-gcc
+      CARGO_TARGET_ARM_UNKNOWN_LINUX_MUSLEABIHF_LINKER: arm-linux-musleabihf-gcc
