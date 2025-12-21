@@ -27,9 +27,9 @@ nix = { version = "0.26", default-features = false, features = ["poll", "signal"
 terminfo = "0.8"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = [
-    "consoleapi", "handleapi", "minwindef", "ntdef", "processenv", "synchapi",
-    "winbase", "wincon", "winerror", "winnt", "winuser" ] }
+windows-sys = { version = ">=0.59, <=0.61", features = [
+    "Win32_UI_Input_KeyboardAndMouse", "Win32_Security",
+    "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Threading" ] }
 
 [dev-dependencies]
 rand = "0.8"
