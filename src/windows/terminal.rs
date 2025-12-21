@@ -8,41 +8,37 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LockResult, Mutex, MutexGuard, TryLockResult};
 use std::time::Duration;
 
-use winapi::ctypes::c_int;
-use winapi::shared::winerror::{
+use windows_sys::Win32::Foundation::{
     WAIT_TIMEOUT,
+    WAIT_FAILED, WAIT_OBJECT_0,
+    GENERIC_READ, GENERIC_WRITE,
+    FALSE, TRUE, HANDLE,
+    CloseHandle,
 };
-use winapi::shared::minwindef::{
-    FALSE, TRUE,
-    BOOL, DWORD, WORD,
+use windows_sys::Win32::System::Threading::{
+    WaitForSingleObject,
+    INFINITE,
 };
-use winapi::shared::ntdef::{
-    CHAR, SHORT, VOID, WCHAR, HANDLE,
-};
-use winapi::um::consoleapi::{
+
+// windows_sys::Win32::Foundation does not provide type aliases defined below, those aliases are effectively "deprecated" since not present in official win32-metadata
+use i32 as BOOL;
+use u32 as DWORD;
+use u16 as WORD;
+use i8 as CHAR;
+use u16 as WCHAR;
+use i16 as SHORT;
+use core::ffi::c_void as VOID;
+
+use windows_sys::Win32::System::Console::{
+    self,
     SetConsoleCtrlHandler,
     GetConsoleMode,
     ReadConsoleW,
     ReadConsoleInputW,
     WriteConsoleW,
     SetConsoleMode,
-};
-use winapi::um::handleapi::{
-    CloseHandle,
-};
-use winapi::um::processenv::{
     GetStdHandle,
-};
-use winapi::um::synchapi::{
-    WaitForSingleObject,
-};
-use winapi::um::winbase::{
-    INFINITE,
     STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE,
-    WAIT_FAILED, WAIT_OBJECT_0,
-};
-use winapi::um::wincon::{
-    self,
     CreateConsoleScreenBuffer,
     WriteConsoleInputW,
     FillConsoleOutputAttribute,
@@ -55,7 +51,7 @@ use winapi::um::wincon::{
     GetConsoleScreenBufferInfo,
     SetConsoleTextAttribute,
     SetConsoleWindowInfo,
-    CHAR_INFO, CHAR_INFO_Char, CONSOLE_CURSOR_INFO, CONSOLE_SCREEN_BUFFER_INFO,
+    CHAR_INFO, CHAR_INFO_0, CONSOLE_CURSOR_INFO, CONSOLE_SCREEN_BUFFER_INFO,
     COORD, SMALL_RECT,
     CONSOLE_TEXTMODE_BUFFER,
     INPUT_RECORD,
@@ -68,9 +64,10 @@ use winapi::um::wincon::{
     ENABLE_PROCESSED_OUTPUT, ENABLE_WRAP_AT_EOL_OUTPUT,
     KEY_EVENT, MOUSE_EVENT, WINDOW_BUFFER_SIZE_EVENT,
 };
-use winapi::um::winuser;
-use winapi::um::winnt::{
-    GENERIC_READ, GENERIC_WRITE,
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    self, VIRTUAL_KEY,
+};
+use windows_sys::Win32::Storage::FileSystem::{
     FILE_SHARE_READ, FILE_SHARE_WRITE,
 };
 
@@ -479,7 +476,7 @@ impl<'a> TerminalReadGuard<'a> {
 
             result_bool(ReadConsoleW(
                 self.term.in_handle,
-                buf.as_ptr() as *mut VOID,
+                buf.as_mut_ptr().cast::<VOID>(),
                 len,
                 &mut n_read,
                 ptr::null_mut()))?;
@@ -515,10 +512,10 @@ impl<'a> TerminalReadGuard<'a> {
     }
 
     fn mouse_event(&mut self, event: &INPUT_RECORD) -> Option<MouseEvent> {
-        if event.EventType == MOUSE_EVENT {
-            let mouse = unsafe { event.Event.MouseEvent() };
+        if u32::from(event.EventType) == MOUSE_EVENT {
+            let mouse = unsafe { event.Event.MouseEvent };
 
-            let input = if mouse.dwEventFlags & wincon::MOUSE_WHEELED != 0 {
+            let input = if mouse.dwEventFlags & Console::MOUSE_WHEELED != 0 {
                 // The high word of `dwButtonState` indicates wheel direction
                 let direction = (mouse.dwButtonState >> 16) as i16;
 
@@ -855,7 +852,7 @@ impl<'a> TerminalWriteGuard<'a> {
 
             result_bool(unsafe { WriteConsoleW(
                 self.writer.out_handle,
-                buf[n..].as_ptr() as *const VOID,
+                buf[n..].as_ptr(),
                 len,
                 &mut n_dw,
                 ptr::null_mut()) })?;
@@ -945,26 +942,26 @@ fn as_millis(timeout: Option<Duration>) -> DWORD {
 fn fg_code(color: Color) -> WORD {
     (match color {
         Color::Black => 0,
-        Color::Blue => wincon::FOREGROUND_BLUE,
-        Color::Cyan => wincon::FOREGROUND_BLUE | wincon::FOREGROUND_GREEN,
-        Color::Green => wincon::FOREGROUND_GREEN,
-        Color::Magenta => wincon::FOREGROUND_BLUE | wincon::FOREGROUND_RED,
-        Color::Red => wincon::FOREGROUND_RED,
-        Color::White => wincon::FOREGROUND_RED | wincon::FOREGROUND_GREEN | wincon::FOREGROUND_BLUE,
-        Color::Yellow => wincon::FOREGROUND_RED | wincon::FOREGROUND_GREEN,
+        Color::Blue => Console::FOREGROUND_BLUE,
+        Color::Cyan => Console::FOREGROUND_BLUE | Console::FOREGROUND_GREEN,
+        Color::Green => Console::FOREGROUND_GREEN,
+        Color::Magenta => Console::FOREGROUND_BLUE | Console::FOREGROUND_RED,
+        Color::Red => Console::FOREGROUND_RED,
+        Color::White => Console::FOREGROUND_RED | Console::FOREGROUND_GREEN | Console::FOREGROUND_BLUE,
+        Color::Yellow => Console::FOREGROUND_RED | Console::FOREGROUND_GREEN,
     }) as WORD
 }
 
 fn bg_code(color: Color) -> WORD {
     (match color {
         Color::Black => 0,
-        Color::Blue => wincon::BACKGROUND_BLUE,
-        Color::Cyan => wincon::BACKGROUND_BLUE | wincon::BACKGROUND_GREEN,
-        Color::Green => wincon::BACKGROUND_GREEN,
-        Color::Magenta => wincon::BACKGROUND_BLUE | wincon::BACKGROUND_RED,
-        Color::Red => wincon::BACKGROUND_RED,
-        Color::White => wincon::BACKGROUND_RED | wincon::BACKGROUND_GREEN | wincon::BACKGROUND_BLUE,
-        Color::Yellow => wincon::BACKGROUND_RED | wincon::BACKGROUND_GREEN,
+        Color::Blue => Console::BACKGROUND_BLUE,
+        Color::Cyan => Console::BACKGROUND_BLUE | Console::BACKGROUND_GREEN,
+        Color::Green => Console::BACKGROUND_GREEN,
+        Color::Magenta => Console::BACKGROUND_BLUE | Console::BACKGROUND_RED,
+        Color::Red => Console::BACKGROUND_RED,
+        Color::White => Console::BACKGROUND_RED | Console::BACKGROUND_GREEN | Console::BACKGROUND_BLUE,
+        Color::Yellow => Console::BACKGROUND_RED | Console::BACKGROUND_GREEN,
     }) as WORD
 }
 
@@ -973,7 +970,7 @@ fn style_code(style: Style) -> WORD {
 
     if style.contains(Style::BOLD) {
         // Closest available approximation for bold text
-        code |= wincon::FOREGROUND_INTENSITY as WORD;
+        code |= Console::FOREGROUND_INTENSITY as WORD;
     }
 
     code
@@ -1078,9 +1075,9 @@ fn bit_to_button(mut bit: DWORD) -> MouseButton {
     assert!(bit != 0);
 
     match bit {
-        wincon::FROM_LEFT_1ST_BUTTON_PRESSED => MouseButton::Left,
-        wincon::RIGHTMOST_BUTTON_PRESSED => MouseButton::Right,
-        wincon::FROM_LEFT_2ND_BUTTON_PRESSED => MouseButton::Middle,
+        Console::FROM_LEFT_1ST_BUTTON_PRESSED => MouseButton::Left,
+        Console::RIGHTMOST_BUTTON_PRESSED => MouseButton::Right,
+        Console::FROM_LEFT_2ND_BUTTON_PRESSED => MouseButton::Middle,
         _ => {
             bit >>= 3;
             let mut n = 3;
@@ -1124,15 +1121,15 @@ fn size_to_coord(size: Size) -> COORD {
 }
 
 fn has_alt(state: DWORD) -> bool {
-    state & (wincon::LEFT_ALT_PRESSED | wincon::RIGHT_ALT_PRESSED) != 0
+    state & (Console::LEFT_ALT_PRESSED | Console::RIGHT_ALT_PRESSED) != 0
 }
 
 fn has_ctrl(state: DWORD) -> bool {
-    state & (wincon::LEFT_CTRL_PRESSED | wincon::RIGHT_CTRL_PRESSED) != 0
+    state & (Console::LEFT_CTRL_PRESSED | Console::RIGHT_CTRL_PRESSED) != 0
 }
 
 fn has_shift(state: DWORD) -> bool {
-    state & wincon::SHIFT_PRESSED != 0
+    state & Console::SHIFT_PRESSED != 0
 }
 
 fn to_dword(n: usize) -> DWORD {
@@ -1166,40 +1163,40 @@ fn to_short_neg(n: usize) -> SHORT {
 }
 
 fn key_press_event(event: &INPUT_RECORD) -> Option<Key> {
-    if event.EventType == KEY_EVENT {
-        let key = unsafe { event.Event.KeyEvent() };
+    if u32::from(event.EventType) == KEY_EVENT {
+        let key = unsafe { event.Event.KeyEvent };
 
         if key.bKeyDown == FALSE {
             return None;
         }
 
-        let key = match key.wVirtualKeyCode as c_int {
-            winuser::VK_BACK => Key::Backspace,
-            winuser::VK_RETURN => Key::Enter,
-            winuser::VK_ESCAPE => Key::Escape,
-            winuser::VK_TAB => Key::Tab,
-            winuser::VK_UP => Key::Up,
-            winuser::VK_DOWN => Key::Down,
-            winuser::VK_LEFT => Key::Left,
-            winuser::VK_RIGHT => Key::Right,
-            winuser::VK_DELETE => Key::Delete,
-            winuser::VK_INSERT => Key::Insert,
-            winuser::VK_HOME => Key::Home,
-            winuser::VK_END => Key::End,
-            winuser::VK_PRIOR => Key::PageUp,
-            winuser::VK_NEXT => Key::PageDown,
-            winuser::VK_F1 => Key::F(1),
-            winuser::VK_F2 => Key::F(2),
-            winuser::VK_F3 => Key::F(3),
-            winuser::VK_F4 => Key::F(4),
-            winuser::VK_F5 => Key::F(5),
-            winuser::VK_F6 => Key::F(6),
-            winuser::VK_F7 => Key::F(7),
-            winuser::VK_F8 => Key::F(8),
-            winuser::VK_F9 => Key::F(9),
-            winuser::VK_F10 => Key::F(10),
-            winuser::VK_F11 => Key::F(11),
-            winuser::VK_F12 => Key::F(12),
+        let key = match key.wVirtualKeyCode as VIRTUAL_KEY {
+            KeyboardAndMouse::VK_BACK => Key::Backspace,
+            KeyboardAndMouse::VK_RETURN => Key::Enter,
+            KeyboardAndMouse::VK_ESCAPE => Key::Escape,
+            KeyboardAndMouse::VK_TAB => Key::Tab,
+            KeyboardAndMouse::VK_UP => Key::Up,
+            KeyboardAndMouse::VK_DOWN => Key::Down,
+            KeyboardAndMouse::VK_LEFT => Key::Left,
+            KeyboardAndMouse::VK_RIGHT => Key::Right,
+            KeyboardAndMouse::VK_DELETE => Key::Delete,
+            KeyboardAndMouse::VK_INSERT => Key::Insert,
+            KeyboardAndMouse::VK_HOME => Key::Home,
+            KeyboardAndMouse::VK_END => Key::End,
+            KeyboardAndMouse::VK_PRIOR => Key::PageUp,
+            KeyboardAndMouse::VK_NEXT => Key::PageDown,
+            KeyboardAndMouse::VK_F1 => Key::F(1),
+            KeyboardAndMouse::VK_F2 => Key::F(2),
+            KeyboardAndMouse::VK_F3 => Key::F(3),
+            KeyboardAndMouse::VK_F4 => Key::F(4),
+            KeyboardAndMouse::VK_F5 => Key::F(5),
+            KeyboardAndMouse::VK_F6 => Key::F(6),
+            KeyboardAndMouse::VK_F7 => Key::F(7),
+            KeyboardAndMouse::VK_F8 => Key::F(8),
+            KeyboardAndMouse::VK_F9 => Key::F(9),
+            KeyboardAndMouse::VK_F10 => Key::F(10),
+            KeyboardAndMouse::VK_F11 => Key::F(11),
+            KeyboardAndMouse::VK_F12 => Key::F(12),
             _ => {
                 if has_alt(key.dwControlKeyState) {
                     return None;
@@ -1207,7 +1204,7 @@ fn key_press_event(event: &INPUT_RECORD) -> Option<Key> {
 
                 let is_ctrl = has_ctrl(key.dwControlKeyState);
 
-                let u_char = unsafe { *key.uChar.UnicodeChar() };
+                let u_char = unsafe { key.uChar.UnicodeChar };
 
                 if u_char != 0 {
                     match char::from_u32(u_char as u32) {
@@ -1228,8 +1225,8 @@ fn key_press_event(event: &INPUT_RECORD) -> Option<Key> {
 }
 
 pub fn size_event(event: &INPUT_RECORD) -> Option<Size> {
-    if event.EventType == WINDOW_BUFFER_SIZE_EVENT {
-        let size = unsafe { event.Event.WindowBufferSizeEvent() };
+    if u32::from(event.EventType) == WINDOW_BUFFER_SIZE_EVENT {
+        let size = unsafe { event.Event.WindowBufferSizeEvent };
 
         Some(Size{
             lines: size.dwSize.Y as usize,
@@ -1240,10 +1237,8 @@ pub fn size_event(event: &INPUT_RECORD) -> Option<Size> {
     }
 }
 
-fn unicode_char(wch: WCHAR) -> CHAR_INFO_Char {
-    let mut ch: CHAR_INFO_Char = unsafe { zeroed() };
-
-    unsafe { *ch.UnicodeChar_mut() = wch; }
+fn unicode_char(wch: WCHAR) -> CHAR_INFO_0 {
+    let ch = CHAR_INFO_0 { UnicodeChar: wch };
 
     ch
 }
@@ -1299,7 +1294,7 @@ unsafe extern "system" fn ctrl_handler(ctrl_type: DWORD) -> BOOL {
                 // Wake up the `WaitForSingleObject` call by
                 // generating a key up event, which will be ignored.
                 let input = INPUT_RECORD{
-                    EventType: KEY_EVENT,
+                    EventType: KEY_EVENT as u16,
                     // KEY_EVENT { bKeyDown: FALSE, ... }
                     Event: zeroed(),
                 };

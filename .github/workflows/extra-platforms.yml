@@ -1,0 +1,49 @@
+on:
+  workflow_dispatch
+
+jobs:
+  TestExtraPlatforms:
+    strategy:
+      fail-fast: false
+
+      matrix:
+        platform:
+        - { target: x86_64-win7-windows-gnu, os: windows-latest }
+        - { target: x86_64-win7-windows-msvc, os: windows-latest }
+        - { target: arm64ec-pc-windows-msvc, os: windows-11-arm }
+        - { target: arm-unknown-linux-musleabihf, os: ubuntu-24.04-arm }
+        - { target: armv5te-unknown-linux-gnueabi, os: ubuntu-24.04-arm }
+        - { target: x86_64h-apple-darwin, os: macos-15-intel }
+
+    runs-on: ${{ matrix.platform.os }}
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Target add and log toolchain info
+      run: |
+        rustup default nightly
+        rustup component add rust-src
+        rustup --version
+        rustup toolchain list
+        rustup target list --installed
+
+    - name: Installing 32-bit CI env
+      if: ${{ runner.os == 'Linux' }}
+      run: |
+        sudo dpkg --add-architecture armhf && sudo apt-get update && sudo apt install gcc-arm-linux-gnueabi musl-dev:armhf # linker
+        sudo ln -s /usr/arm-linux-gnueabi/lib/{ld-linux.so.*,libgcc_s.so.*,libm.so.*,libc.so.*} /lib # provide base libs to make tests runnable
+        rustup target add ${{ matrix.platform.target }} # crt files
+
+    - name: Build
+      run: cargo build -Z build-std --verbose --target ${{ matrix.platform.target }}
+
+    - name: Test
+      run: cargo test -Z build-std --verbose --target ${{ matrix.platform.target }}
+
+    env:
+      RUST_BACKTRACE: 1
+      RUST_INCREMENTAL: 0
+      RUSTFLAGS: "-C debuginfo=0"
+      CARGO_TARGET_ARMV5TE_UNKNOWN_LINUX_GNUEABI_LINKER: arm-linux-gnueabi-gcc
+      CARGO_TARGET_ARM_UNKNOWN_LINUX_MUSLEABIHF_LINKER: arm-linux-musleabihf-gcc

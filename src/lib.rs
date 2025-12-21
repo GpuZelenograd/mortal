@@ -39,7 +39,7 @@ extern crate unicode_width;
 #[cfg(unix)] extern crate nix;
 #[cfg(unix)] extern crate terminfo;
 
-#[cfg(windows)] extern crate winapi;
+#[cfg(windows)] extern crate windows_sys;
 
 pub use crate::screen::{Screen, ScreenReadGuard, ScreenWriteGuard};
 pub use crate::sequence::{FindResult, SequenceMap};
