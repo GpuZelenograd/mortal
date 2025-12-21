@@ -8,10 +8,18 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LockResult, Mutex, MutexGuard, TryLockResult};
 use std::time::Duration;
 
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
 use windows_sys::Win32::Foundation::{
     WAIT_TIMEOUT,
+    WAIT_FAILED, WAIT_OBJECT_0,
+    GENERIC_READ, GENERIC_WRITE,
+    FALSE, TRUE, HANDLE,
+    CloseHandle,
 };
+use windows_sys::Win32::System::Threading::{
+    WaitForSingleObject,
+    INFINITE,
+};
+
 // windows_sys::Win32::Foundation does not provide type aliases defined below, those aliases are effectively "deprecated" since not present in official win32-metadata
 use i32 as BOOL;
 use u32 as DWORD;
@@ -21,35 +29,16 @@ use u16 as WCHAR;
 use i16 as SHORT;
 use core::ffi::c_void as VOID;
 
-use windows_sys::Win32::Foundation::{
-    FALSE, TRUE, HANDLE,
-};
 use windows_sys::Win32::System::Console::{
+    self,
     SetConsoleCtrlHandler,
     GetConsoleMode,
     ReadConsoleW,
     ReadConsoleInputW,
     WriteConsoleW,
     SetConsoleMode,
-};
-use windows_sys::Win32::Foundation::{
-    CloseHandle,
-};
-use windows_sys::Win32::System::Console::{
     GetStdHandle,
-};
-use windows_sys::Win32::System::Threading::{
-    WaitForSingleObject,
-    INFINITE,
-};
-use windows_sys::Win32::System::Console::{
     STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE,
-};
-use windows_sys::Win32::Foundation::{
-    WAIT_FAILED, WAIT_OBJECT_0,
-};
-use windows_sys::Win32::System::Console::{
-    self,
     CreateConsoleScreenBuffer,
     WriteConsoleInputW,
     FillConsoleOutputAttribute,
@@ -75,9 +64,8 @@ use windows_sys::Win32::System::Console::{
     ENABLE_PROCESSED_OUTPUT, ENABLE_WRAP_AT_EOL_OUTPUT,
     KEY_EVENT, MOUSE_EVENT, WINDOW_BUFFER_SIZE_EVENT,
 };
-use windows_sys::Win32::UI::Input::KeyboardAndMouse;
-use windows_sys::Win32::Foundation::{
-    GENERIC_READ, GENERIC_WRITE,
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    self, VIRTUAL_KEY,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_SHARE_READ, FILE_SHARE_WRITE,
