@@ -488,7 +488,7 @@ impl<'a> TerminalReadGuard<'a> {
 
             result_bool(ReadConsoleW(
                 self.term.in_handle,
-                buf.as_ptr() as *mut VOID,
+                buf.as_mut_ptr().cast::<VOID>(),
                 len,
                 &mut n_read,
                 ptr::null_mut()))?;
